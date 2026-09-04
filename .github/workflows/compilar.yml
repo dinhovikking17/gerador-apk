@@ -24,7 +24,16 @@ jobs:
       - name: Instalar Dependencias
         run: |
           sudo apt-get update
-          sudo apt-get install -y apktool zipalign apksigner openjdk-17-jdk jq imagemagick zip unzip
+          sudo apt-get install -y zipalign apksigner openjdk-17-jdk jq imagemagick zip unzip
+          
+          # Instalar a última versão do apktool manualmente (resolve bug do aapt e attrs)
+          wget https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool
+          wget https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar
+          mv apktool_2.9.3.jar apktool.jar
+          sudo mv apktool /usr/local/bin/
+          sudo mv apktool.jar /usr/local/bin/
+          sudo chmod +x /usr/local/bin/apktool
+          sudo chmod +x /usr/local/bin/apktool.jar
 
       - name: Extrair APK Base
         run: |
