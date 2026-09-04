@@ -26,10 +26,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y apktool zipalign openjdk-17-jdk imagemagick
 
-      - name: Baixar APK Base
-        run: |
-          # Substitua este link pelo link direto para o download do seu APK original (sem modificações)
-          curl -L -o base.apk "${{ secrets.URL_APK_BASE }}"
+      - name: Baixar Código do Repositório
+        uses: actions/checkout@v4
 
       - name: Descompilar APK
         run: |
