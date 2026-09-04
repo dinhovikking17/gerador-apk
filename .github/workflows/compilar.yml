@@ -23,9 +23,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y apktool zipalign openjdk-17-jdk jq
 
-      - name: Descompilar APK
+      - name: Descompilar APK Seguro
         run: |
-          apktool d base.apk -o app_descompilado
+          # O parâmetro -s evita descompilar o código smali/dex, e o -r preserva recursos binários
+          apktool d -s base.apk -o app_descompilado
 
       - name: Injetar ID do Revendedor
         run: |
@@ -35,6 +36,7 @@ jobs:
       - name: Trocar Nome do Aplicativo
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
+          # Altera o nome em qualquer arquivo strings.xml presente
           find app_descompilado/res -name "strings.xml" -exec sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">$APP_NAME</string>|g" {} +
 
       - name: Baixar e Injetar Imagens do Servidor
@@ -58,9 +60,9 @@ jobs:
 
       - name: Recompilar APK
         run: |
-          apktool b app_descompilado -o app_modificado.apk
+          apktool b app_descompilado -o app_modificado.apk --use-aapt2
 
-      - name: Assinar APK
+      - name: Alinhar e Assinar APK
         run: |
           keytool -genkey -v -keystore release.jks -alias alias -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=IPTV, OU=App, O=Rebrand, L=BR, S=BR, C=BR"
           zipalign -v -p 4 app_modificado.apk app_alinhado.apk
@@ -69,5 +71,5 @@ jobs:
       - name: Publicar APK para Download
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.inputs.app_name }}-${{ github.event.inputs.reseller_id }}.apk
+          name: ${{ github.event.inputs.app_name }}-${{ github.event.inputs.reseller_id }}
           path: app_final.apk
