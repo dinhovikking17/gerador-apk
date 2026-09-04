@@ -21,7 +21,7 @@ jobs:
       - name: Instalar Dependencias
         run: |
           sudo apt-get update
-          sudo apt-get install -y zipalign openjdk-17-jdk jq imagemagick zip unzip
+          sudo apt-get install -y zipalign apksigner openjdk-17-jdk jq imagemagick zip unzip
 
       - name: Extrair APK Base
         run: |
