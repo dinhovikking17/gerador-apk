@@ -72,15 +72,21 @@ jobs:
       - name: Upload APK e Notificar Painel
         run: |
           echo "Fazendo upload do APK gerado..."
-          DOWNLOAD_URL=$(curl -s -F "reqtype=fileupload" -F "fileToUpload=@app_final.apk" https://catbox.moe/user/api.php)
+          UPLOAD_RES=$(curl -s -F "file=@app_final.apk" https://tmpfiles.org/api/v1/upload)
+          echo "Resposta do servidor: $UPLOAD_RES"
           
-          if [[ "$DOWNLOAD_URL" == http* ]]; then
+          URL=$(echo "$UPLOAD_RES" | jq -r '.data.url // empty')
+          
+          if [ -n "$URL" ]; then
+            # Converte o link para a versão de download direto
+            DOWNLOAD_URL=$(echo "$URL" | sed 's|tmpfiles.org/|tmpfiles.org/dl/|')
             echo "URL do APK: $DOWNLOAD_URL"
+            
             curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_link" \
               -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" \
               -H "Content-Type: application/json" \
               -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"url\": \"$DOWNLOAD_URL\"}"
           else
-            echo "Falha no upload para o Catbox."
+            echo "Falha no upload."
             exit 1
           fi
