@@ -6,6 +6,9 @@ on:
       app_name:
         description: 'Nome do App'
         required: true
+      package_name:
+        description: 'Nome do Pacote'
+        required: true
       reseller_id:
         description: 'ID do Revendedor'
         required: true
@@ -21,16 +24,22 @@ jobs:
       - name: Instalar Dependencias
         run: |
           sudo apt-get update
-          sudo apt-get install -y zipalign apksigner openjdk-17-jdk jq imagemagick zip unzip
+          sudo apt-get install -y apktool zipalign apksigner openjdk-17-jdk jq imagemagick zip unzip
 
       - name: Extrair APK Base
         run: |
-          unzip -q base.apk -d app_extraido
+          apktool d -s base.apk -o app_extraido
 
-      - name: Injetar ID do Revendedor
+      - name: Injetar ID, Alterar Pacote e Nome do App
         run: |
           mkdir -p app_extraido/assets
           echo -n "${{ github.event.inputs.reseller_id }}" > app_extraido/assets/reseller_id.txt
+          
+          # Altera o nome do pacote no AndroidManifest para permitir instalações simultâneas
+          sed -i -E "s/package=\"[^\"]+\"/package=\"${{ github.event.inputs.package_name }}\"/g" app_extraido/AndroidManifest.xml
+          
+          # Tenta alterar o Nome do Aplicativo escrito debaixo do ícone
+          sed -i -E "s/<string name=\"app_name\">[^<]+<\/string>/<string name=\"app_name\">${{ github.event.inputs.app_name }}<\/string>/g" app_extraido/res/values/strings.xml || true
 
       - name: Baixar e Converter Imagens
         run: |
@@ -57,11 +66,7 @@ jobs:
 
       - name: Reempacotar APK
         run: |
-          cd app_extraido
-          # Remove assinaturas antigas para não gerar conflito
-          rm -rf META-INF
-          zip -q -r ../app_modificado.apk .
-          cd ..
+          apktool b app_extraido -o app_modificado.apk
 
       - name: Alinhar e Assinar APK
         run: |
@@ -72,7 +77,13 @@ jobs:
       - name: Upload APK e Notificar Painel
         run: |
           echo "Fazendo upload do APK gerado..."
-          UPLOAD_RES=$(curl -s -F "file=@app_final.apk" https://tmpfiles.org/api/v1/upload)
+          
+          # Renomeia o APK para o nome do app (troca espaços por underline para não quebrar o link)
+          SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_')
+          mv app_final.apk "${SAFE_NAME}.apk"
+          
+          # Envia forçando o tipo de arquivo correto para APK, assim o navegador não salva como .zip
+          UPLOAD_RES=$(curl -s -F "file=@${SAFE_NAME}.apk;type=application/vnd.android.package-archive" https://tmpfiles.org/api/v1/upload)
           echo "Resposta do servidor: $UPLOAD_RES"
           
           URL=$(echo "$UPLOAD_RES" | jq -r '.data.url // empty')
