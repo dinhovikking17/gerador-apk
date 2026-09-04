@@ -21,25 +21,18 @@ jobs:
       - name: Instalar Dependencias
         run: |
           sudo apt-get update
-          sudo apt-get install -y apktool zipalign openjdk-17-jdk jq
+          sudo apt-get install -y zipalign openjdk-17-jdk jq imagemagick zip unzip
 
-      - name: Descompilar APK Seguro
+      - name: Extrair APK Base
         run: |
-          # O parâmetro -s evita descompilar o código smali/dex, e o -r preserva recursos binários
-          apktool d -s base.apk -o app_descompilado
+          unzip -q base.apk -d app_extraido
 
       - name: Injetar ID do Revendedor
         run: |
-          mkdir -p app_descompilado/assets
-          echo -n "${{ github.event.inputs.reseller_id }}" > app_descompilado/assets/reseller_id.txt
+          mkdir -p app_extraido/assets
+          echo -n "${{ github.event.inputs.reseller_id }}" > app_extraido/assets/reseller_id.txt
 
-      - name: Trocar Nome do Aplicativo
-        run: |
-          APP_NAME="${{ github.event.inputs.app_name }}"
-          # Altera o nome em qualquer arquivo strings.xml presente
-          find app_descompilado/res -name "strings.xml" -exec sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">$APP_NAME</string>|g" {} +
-
-      - name: Baixar e Injetar Imagens do Servidor
+      - name: Baixar e Converter Imagens
         run: |
           RESELLER_ID="${{ github.event.inputs.reseller_id }}"
           ASSETS=$(curl -s -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" "https://banco-de-dados.blindervpn.workers.dev/?action=get_rebrand_assets&reseller_id=$RESELLER_ID")
@@ -48,19 +41,27 @@ jobs:
           BG_B64=$(echo "$ASSETS" | jq -r '.bg_b64 // empty')
 
           if [ -n "$LOGO_B64" ]; then
-            echo "$LOGO_B64" | base64 -d > nova_logo.png
-            find app_descompilado/res -name "logo.png" -exec cp nova_logo.png {} +
-            find app_descompilado/res -name "ic_launcher.png" -exec cp nova_logo.png {} +
+            echo "$LOGO_B64" | base64 -d > raw_logo
+            # Converte e garante que é um PNG válido com cabeçalho legítimo
+            convert raw_logo -resize 512x512 PNG32:nova_logo.png
+            find app_extraido/res -name "logo.png" -exec cp nova_logo.png {} +
+            find app_extraido/res -name "ic_launcher.png" -exec cp nova_logo.png {} +
           fi
 
           if [ -n "$BG_B64" ]; then
-            echo "$BG_B64" | base64 -d > novo_fundo.png
-            find app_descompilado/res -name "fundo.png" -exec cp novo_fundo.png {} +
+            echo "$BG_B64" | base64 -d > raw_bg
+            # Converte a imagem de fundo para formato PNG legítimo
+            convert raw_bg PNG32:novo_fundo.png
+            find app_extraido/res -name "fundo.png" -exec cp novo_fundo.png {} +
           fi
 
-      - name: Recompilar APK
+      - name: Reempacotar APK
         run: |
-          apktool b app_descompilado -o app_modificado.apk --use-aapt2
+          cd app_extraido
+          # Remove assinaturas antigas para não gerar conflito
+          rm -rf META-INF
+          zip -q -r ../app_modificado.apk .
+          cd ..
 
       - name: Alinhar e Assinar APK
         run: |
