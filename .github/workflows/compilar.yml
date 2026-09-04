@@ -9,25 +9,19 @@ on:
       reseller_id:
         description: 'ID do Revendedor'
         required: true
-      logo_b64:
-        description: 'Logo Base64'
-        required: false
-      bg_b64:
-        description: 'Fundo Base64'
-        required: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Instalar Dependências (Apktool, Zipalign, Java)
+      - name: Baixar Codigo do Repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Dependencias
         run: |
           sudo apt-get update
-          sudo apt-get install -y apktool zipalign openjdk-17-jdk imagemagick
-
-      - name: Baixar Código do Repositório
-        uses: actions/checkout@v4
+          sudo apt-get install -y apktool zipalign openjdk-17-jdk jq
 
       - name: Descompilar APK
         run: |
@@ -41,22 +35,24 @@ jobs:
       - name: Trocar Nome do Aplicativo
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
-          # Modifica o nome nas strings
           find app_descompilado/res -name "strings.xml" -exec sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">$APP_NAME</string>|g" {} +
 
-      - name: Injetar Logotipo (se fornecido)
+      - name: Baixar e Injetar Imagens do Servidor
         run: |
-          if [ -n "${{ github.event.inputs.logo_b64 }}" ]; then
-            echo "${{ github.event.inputs.logo_b64 }}" | base64 -d > nova_logo.png
-            # Redimensiona para os tamanhos corretos do Android
+          RESELLER_ID="${{ github.event.inputs.reseller_id }}"
+          ASSETS=$(curl -s -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" "https://banco-de-dados.blindervpn.workers.dev/?action=get_rebrand_assets&reseller_id=$RESELLER_ID")
+          
+          LOGO_B64=$(echo "$ASSETS" | jq -r '.logo_b64 // empty')
+          BG_B64=$(echo "$ASSETS" | jq -r '.bg_b64 // empty')
+
+          if [ -n "$LOGO_B64" ]; then
+            echo "$LOGO_B64" | base64 -d > nova_logo.png
             find app_descompilado/res -name "logo.png" -exec cp nova_logo.png {} +
             find app_descompilado/res -name "ic_launcher.png" -exec cp nova_logo.png {} +
           fi
 
-      - name: Injetar Fundo (se fornecido)
-        run: |
-          if [ -n "${{ github.event.inputs.bg_b64 }}" ]; then
-            echo "${{ github.event.inputs.bg_b64 }}" | base64 -d > novo_fundo.png
+          if [ -n "$BG_B64" ]; then
+            echo "$BG_B64" | base64 -d > novo_fundo.png
             find app_descompilado/res -name "fundo.png" -exec cp novo_fundo.png {} +
           fi
 
@@ -66,12 +62,11 @@ jobs:
 
       - name: Assinar APK
         run: |
-          # Gera uma keystore temporária na hora para assinar
           keytool -genkey -v -keystore release.jks -alias alias -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=IPTV, OU=App, O=Rebrand, L=BR, S=BR, C=BR"
           zipalign -v -p 4 app_modificado.apk app_alinhado.apk
           apksigner sign --ks release.jks --ks-pass pass:123456 --key-pass pass:123456 --out app_final.apk app_alinhado.apk
 
-      - name: Publicar Link de Download
+      - name: Publicar APK para Download
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.inputs.app_name }}-${{ github.event.inputs.reseller_id }}.apk
