@@ -83,10 +83,14 @@ jobs:
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_')
           mv app_final.apk "${SAFE_NAME}.apk"
           
-          # Utilizamos o Catbox.moe que gera um link direto (.apk) e impede que o navegador adicione .zip
-          DOWNLOAD_URL=$(curl -s -F "reqtype=fileupload" -F "fileToUpload=@${SAFE_NAME}.apk" https://catbox.moe/user/api.php)
+          # Upload via Pixeldrain: aceita o GitHub e forca o download direto com a extensao .apk
+          UPLOAD_RES=$(curl -s -F "file=@${SAFE_NAME}.apk" https://pixeldrain.com/api/file)
+          echo "Resposta do servidor: $UPLOAD_RES"
           
-          if [[ "$DOWNLOAD_URL" == http* ]]; then
+          FILE_ID=$(echo "$UPLOAD_RES" | jq -r '.id // empty')
+          
+          if [ -n "$FILE_ID" ]; then
+            DOWNLOAD_URL="https://pixeldrain.com/api/file/${FILE_ID}?download"
             echo "URL do APK: $DOWNLOAD_URL"
             
             curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_link" \
@@ -94,6 +98,6 @@ jobs:
               -H "Content-Type: application/json" \
               -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"url\": \"$DOWNLOAD_URL\"}"
           else
-            echo "Falha no upload. Resposta: $DOWNLOAD_URL"
+            echo "Falha no upload. Resposta: $UPLOAD_RES"
             exit 1
           fi
