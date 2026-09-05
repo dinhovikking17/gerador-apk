@@ -13,6 +13,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Baixar Codigo do Repositorio
@@ -75,38 +77,32 @@ jobs:
           zipalign -v -p 4 app_modificado.apk app_alinhado.apk
           apksigner sign --ks release.jks --ks-pass pass:123456 --key-pass pass:123456 --out app_final.apk app_alinhado.apk
 
-      - name: Upload APK e Notificar Painel
+      - name: Publicar APK no GitHub Releases e Notificar Painel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Fazendo upload do APK gerado..."
+          echo "Publicando APK diretamente no GitHub Releases..."
           
           # Renomeia o APK para o nome do app (troca espaços por underline para não quebrar o link)
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_')
           mv app_final.apk "${SAFE_NAME}.apk"
           
-          # Upload via BashUpload (aceita APK, aceita GitHub Actions e forca download como .apk)
-          UPLOAD_RES=$(curl -s https://bashupload.com -T "${SAFE_NAME}.apk")
-          echo "Resposta do servidor: $UPLOAD_RES"
+          TAG="app-${{ github.event.inputs.reseller_id }}"
           
-          DOWNLOAD_URL=$(echo "$UPLOAD_RES" | grep -o 'https://bashupload.com/[^ ]*' | head -n 1 | tr -d '\r\n')
+          # Remove release anterior caso o revendedor esteja recriando o app
+          gh release delete "$TAG" --yes || true
+          git push --delete origin "$TAG" || true
           
-          # Se o BashUpload oscilar, usa tmpfiles.org como contingencia
-          if [[ "$DOWNLOAD_URL" != http* ]]; then
-            echo "Tentando servidor de contingencia (tmpfiles.org)..."
-            TMP_RES=$(curl -s -F "file=@${SAFE_NAME}.apk" https://tmpfiles.org/api/v1/upload)
-            URL=$(echo "$TMP_RES" | jq -r '.data.url // empty')
-            if [ -n "$URL" ]; then
-              DOWNLOAD_URL=$(echo "$URL" | sed 's|tmpfiles.org/|tmpfiles.org/dl/|')
-            fi
-          fi
+          # Cria a Release oficial dentro do proprio GitHub
+          gh release create "$TAG" "${SAFE_NAME}.apk" \
+            --title "${{ github.event.inputs.app_name }}" \
+            --notes "APK gerado automaticamente para o revendedor ${{ github.event.inputs.reseller_id }}"
           
-          if [[ "$DOWNLOAD_URL" == http* ]]; then
-            echo "URL do APK: $DOWNLOAD_URL"
-            
-            curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_link" \
-              -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" \
-              -H "Content-Type: application/json" \
-              -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"url\": \"$DOWNLOAD_URL\"}"
-          else
-            echo "Falha no upload. Resposta: $UPLOAD_RES"
-            exit 1
-          fi
+          # URL direta oficial do GitHub (baixa exatamente como .apk)
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${SAFE_NAME}.apk"
+          echo "URL do APK: $DOWNLOAD_URL"
+          
+          curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_link" \
+            -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" \
+            -H "Content-Type: application/json" \
+            -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"url\": \"$DOWNLOAD_URL\"}"
