@@ -83,16 +83,20 @@ jobs:
           SAFE_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr ' ' '_')
           mv app_final.apk "${SAFE_NAME}.apk"
           
-          # Upload via Uguu (gratuito, sem cadastro/API key, mantem extensao .apk direta)
-          UPLOAD_RES=$(curl -s -F "files[]=@${SAFE_NAME}.apk" https://uguu.se/upload.php)
+          # Upload via BashUpload (aceita APK, aceita GitHub Actions e forca download como .apk)
+          UPLOAD_RES=$(curl -s https://bashupload.com -T "${SAFE_NAME}.apk")
           echo "Resposta do servidor: $UPLOAD_RES"
           
-          DOWNLOAD_URL=$(echo "$UPLOAD_RES" | jq -r '.files[0].url // empty')
+          DOWNLOAD_URL=$(echo "$UPLOAD_RES" | grep -o 'https://bashupload.com/[^ ]*' | head -n 1 | tr -d '\r\n')
           
-          # Se o Uguu falhar por instabilidade, usa transfer.sh como contingencia
-          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-            echo "Tentando servidor alternativo (transfer.sh)..."
-            DOWNLOAD_URL=$(curl -s --upload-file "${SAFE_NAME}.apk" "https://transfer.sh/${SAFE_NAME}.apk")
+          # Se o BashUpload oscilar, usa tmpfiles.org como contingencia
+          if [[ "$DOWNLOAD_URL" != http* ]]; then
+            echo "Tentando servidor de contingencia (tmpfiles.org)..."
+            TMP_RES=$(curl -s -F "file=@${SAFE_NAME}.apk" https://tmpfiles.org/api/v1/upload)
+            URL=$(echo "$TMP_RES" | jq -r '.data.url // empty')
+            if [ -n "$URL" ]; then
+              DOWNLOAD_URL=$(echo "$URL" | sed 's|tmpfiles.org/|tmpfiles.org/dl/|')
+            fi
           fi
           
           if [[ "$DOWNLOAD_URL" == http* ]]; then
