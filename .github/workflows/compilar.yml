@@ -6,9 +6,6 @@ on:
       app_name:
         description: 'Nome do App'
         required: true
-      package_name:
-        description: 'Nome do Pacote'
-        required: true
       reseller_id:
         description: 'ID do Revendedor'
         required: true
@@ -39,13 +36,10 @@ jobs:
         run: |
           apktool d -s base.apk -o app_extraido
 
-      - name: Injetar ID, Alterar Pacote e Nome do App
+      - name: Injetar ID e Nome do App
         run: |
           mkdir -p app_extraido/assets
           echo -n "${{ github.event.inputs.reseller_id }}" > app_extraido/assets/reseller_id.txt
-          
-          # Altera o nome do pacote no AndroidManifest para permitir instalações simultâneas
-          sed -i -E "s/package=\"[^\"]+\"/package=\"${{ github.event.inputs.package_name }}\"/g" app_extraido/AndroidManifest.xml
           
           # Tenta alterar o Nome do Aplicativo escrito debaixo do ícone
           sed -i -E "s/<string name=\"app_name\">[^<]+<\/string>/<string name=\"app_name\">${{ github.event.inputs.app_name }}<\/string>/g" app_extraido/res/values/strings.xml || true
@@ -60,7 +54,6 @@ jobs:
 
           if [ -n "$LOGO_B64" ]; then
             echo "$LOGO_B64" | base64 -d > raw_logo
-            # Converte e garante que é um PNG válido com cabeçalho legítimo
             convert raw_logo -resize 512x512 PNG32:nova_logo.png
             find app_extraido/res -name "logo.png" -exec cp nova_logo.png {} +
             find app_extraido/res -name "ic_launcher.png" -exec cp nova_logo.png {} +
@@ -68,7 +61,6 @@ jobs:
 
           if [ -n "$BG_B64" ]; then
             echo "$BG_B64" | base64 -d > raw_bg
-            # Converte a imagem de fundo para formato PNG legítimo
             convert raw_bg PNG32:novo_fundo.png
             find app_extraido/res -name "fundo.png" -exec cp novo_fundo.png {} +
           fi
@@ -98,7 +90,6 @@ jobs:
           URL=$(echo "$UPLOAD_RES" | jq -r '.data.url // empty')
           
           if [ -n "$URL" ]; then
-            # Converte o link para a versão de download direto
             DOWNLOAD_URL=$(echo "$URL" | sed 's|tmpfiles.org/|tmpfiles.org/dl/|')
             echo "URL do APK: $DOWNLOAD_URL"
             
