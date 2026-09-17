@@ -20,6 +20,13 @@ jobs:
       - name: Baixar Codigo do Repositorio
         uses: actions/checkout@v4
 
+      - name: Reportar Status - Instalando Dependencias
+        run: |
+          curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_status" \
+            -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" \
+            -H "Content-Type: application/json" \
+            -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"status\": \"Instalando dependências (1/6)...\"}"
+
       - name: Instalar Dependencias
         run: |
           sudo apt-get update
@@ -34,9 +41,23 @@ jobs:
           sudo chmod +x /usr/local/bin/apktool
           sudo chmod +x /usr/local/bin/apktool.jar
 
+      - name: Reportar Status - Extraindo APK
+        run: |
+          curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_status" \
+            -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" \
+            -H "Content-Type: application/json" \
+            -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"status\": \"Extraindo base do App (2/6)...\"}"
+
       - name: Extrair APK Base
         run: |
           apktool d -s base.apk -o app_extraido
+
+      - name: Reportar Status - Injetando Dados
+        run: |
+          curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_status" \
+            -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" \
+            -H "Content-Type: application/json" \
+            -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"status\": \"Injetando Nome e Ícone (3/6)...\"}"
 
       - name: Injetar ID e Nome do App
         run: |
@@ -67,15 +88,46 @@ jobs:
             find app_extraido/res -name "fundo.png" -exec cp novo_fundo.png {} +
           fi
 
+      - name: Reportar Status - Reempacotando
+        run: |
+          curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_status" \
+            -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" \
+            -H "Content-Type: application/json" \
+            -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"status\": \"Compilando novo APK (4/6)...\"}"
+
       - name: Reempacotar APK
         run: |
           apktool b app_extraido -o app_modificado.apk
 
+      - name: Reportar Status - Assinando
+        run: |
+          curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_status" \
+            -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" \
+            -H "Content-Type: application/json" \
+            -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"status\": \"Assinando Aplicativo (5/6)...\"}"
+
       - name: Alinhar e Assinar APK
         run: |
-          keytool -genkey -v -keystore release.jks -alias alias -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=IPTV, OU=App, O=Rebrand, L=BR, S=BR, C=BR"
+          if [ ! -f release.jks ]; then
+            echo "Gerando nova keystore e salvando no repositorio..."
+            keytool -genkey -v -keystore release.jks -alias alias -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=IPTV, OU=App, O=Rebrand, L=BR, S=BR, C=BR"
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add release.jks
+            git commit -m "Salvar keystore para manter a mesma assinatura nas proximas atualizacoes"
+            git push
+          else
+            echo "Keystore encontrada. Usando a mesma assinatura."
+          fi
           zipalign -v -p 4 app_modificado.apk app_alinhado.apk
           apksigner sign --ks release.jks --ks-pass pass:123456 --key-pass pass:123456 --out app_final.apk app_alinhado.apk
+
+      - name: Reportar Status - Publicando
+        run: |
+          curl -s -X POST "https://banco-de-dados.blindervpn.workers.dev/?action=set_rebrand_status" \
+            -H "X-Auth-Token: B7f9a2XkP1mQz8vL4wYc" \
+            -H "Content-Type: application/json" \
+            -d "{\"reseller_id\": \"${{ github.event.inputs.reseller_id }}\", \"status\": \"Gerando link de download (6/6)...\"}"
 
       - name: Publicar APK no GitHub Releases e Notificar Painel
         env:
